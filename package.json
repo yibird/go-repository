@@ -1,0 +1,19 @@
+{
+  "name": "go-repository",
+  "version": "1.0.0",
+  "description": "一个非常全面的Go知识库,涵盖Go基础、并发线程、网络编程、分布式微服务、设计模式、源码分析、Go常用工具库等内容",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "vitepress dev docs",
+    "build": "vitepress build docs",
+    "serve": "vitepress serve docs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^4.7.2",
+    "vitepress": "^1.0.0-alpha.75"
+  }
+}
