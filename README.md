@@ -1,2 +1,3 @@
-# java-repository
-一个完备的Java知识库,包含Java基础、Java并发、Spring全家桶、JVM、数据库、微服务、设计模式等内容
+# go-repository
+
+一个非常全面的 Go 知识库,涵盖 Go 基础、并发线程、网络编程、分布式微服务、设计模式、源码分析、Go 常用工具库等内容。
