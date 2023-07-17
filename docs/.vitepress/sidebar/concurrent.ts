@@ -1,9 +1,9 @@
 export default {
-  text: "Go基础",
+  text: "Go并发编程",
   collapsed: true,
   items: [
     {
-      text: "Go语言简介",
+      text: "Go并发模型(GMP)",
       link: "/base/introduction.md",
     },
   ],
