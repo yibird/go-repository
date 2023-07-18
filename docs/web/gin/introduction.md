@@ -194,7 +194,99 @@ name=zchengfeng&age=18
 
 ### 2.4 获取请求体参数（Request Body Parameters）:
 
+在 Gin 框架中,gin.Context 提供多个以 ShouldBind 和 Bind 为前缀的方法用于绑定请求参数:
+
+- `ShouldBind(obj any) error`:用于将请求参数绑定到指定的 Go 结构体的函数。它可以根据请求的内容类型（如 JSON、表单数据等）自动解析请求参数,并将其映射到指定的结构体上,支持参数验证和处理。
+- `ShouldBindJSON(obj any) error`:用于将请求的 JSON 数据绑定到指定的 Go 结构体。它可以自动解析请求体中的 JSON 数据，并将其映射到指定的结构体上。
+- `ShouldBindXML(obj any) error`:用于将请求的 XML 数据绑定到指定的 Go 结构体。它可以自动解析请求体中的 XML 数据，并将其映射到指定的结构体上。
+- `ShouldBindYAML(obj any) error`:用于将请求的 YAML 格式的数据绑定到指定的 Go 结构体。它可以自动解析请求体中的 YAML 数据，并将其映射到指定的结构体上。
+- `ShouldBindTOML(obj any) error`:用于将请求的 TOML 格式的数据绑定到指定的 Go 结构体。它可以自动解析请求体中的 TOML 数据，并将其映射到指定的结构体上。
+- `ShouldBindUri(obj any) error`:用于将请求的 URI 路径参数绑定到指定的 Go 结构体。它可以自动解析请求的 URI 路径参数，并将其映射到指定的结构体上。
+- `ShouldBindQuery(obj any) error`:。用于将请求的 URL 查询参数绑定到指定的 Go 结构体。它可以自动解析 URL 查询参数，并将其映射到指定的结构体上
+- `ShouldBindHeader(obj any) error`:用于将请求的 Header 参数绑定到指定的 Go 结构体。它可以自动解析请求的 Header 参数，并将其映射到指定的结构体上。
+- `ShouldBindWith(obj any, b binding.Binding) error`:用于将请求的消息绑定到指定的 Go 结构体，同时指定消息体的解析器。这个方法可以用于解析和绑定不同类型的请求体,Gin 支持 binding.JSON、binding.XML、binding.YAML、binding.Form 等解析器。例如使用 JSON 解析器解析参数:`c.ShouldBindBodyWith(&user, binding.JSON);`。
+- `ShouldBindBodyWith(obj any, bb binding.BindingBody) (err error)`:与 ShouldBindWith()类似,用于将请求的请求体绑定到指定的 Go 结构体，同时指定消息体的解析器。
+
+Gin 在解析请求参数绑定到结构体上,支持使用 tag 配置:
+
+- json:用于指定字段在 JSON 数据中的名称。
+- form:用于指定字段在表单数据中的名称。
+- xml:用于指定字段在 XML 数据中的名称。
+- yaml:用于指定字段在 YAML 数据中的名称。
+- toml:用于指定字段在 TOML 数据中的名称。
+- uri:用于指定字段在 URI 路径参数中的名称。
+- query:用于指定字段在 URL 查询参数中的名称。
+- header:用于指定字段在请求头中的名称。
+- binding:用于指定字段的验证规则。binding 标签支持多个验证规则(以逗号分割):
+  - required：指定字段为必填字段，不能为空。
+  - min：指定字段的最小值或最小长度。
+  - max：指定字段的最大值或最大长度。
+  - email：指定字段为电子邮件格式。
+  - url：指定字段为 URL 格式。
+  - numeric：指定字段为数值类型。
+  - alpha：指定字段只能包含字母。
+  - alphanum：指定字段只能包含字母和数字。
+  - len：指定字段的固定长度。
+
+```go
+type User struct {
+	Name string `json:"name" form:"name" `
+	Age  int    `json:"age" form:"age" `
+}
+
+r.POST("/jsonParams", func(c *gin.Context) {
+	var user User
+	// 用于将请求的 JSON 数据绑定到指定的 Go 结构体
+	if err := c.ShouldBindJSON(&user); err == nil {
+		fmt.Println(user) // {zchengfeng 18}
+	} else {
+		fmt.Println("参数解析错误")
+	}
+})
+```
+
+IDEA HTTP Client 测试脚本:
+
+```shell
+POST localhost:8080/jsonParams
+Content-Type: application/json
+
+{"name":"zchengfeng","age":18}
+```
+
 ### 2.5 获取请求头参数和原始请求体数据
+
+- GetHeader():用于从 HTTP 请求中获取指定的请求头信息。
+- GetRawData():获取原始请求体数据,返回一个[]byte 切片和一个 err 对象。注意:使用 GetRawData()Gin 框架将不会自动解析请求体或将其绑定到结构体。
+
+```go
+r.POST("/requestParams", func(c *gin.Context) {
+	// 根据请求头字段获取对应的值
+	accessToken := c.GetHeader("access_token")
+	fmt.Println("access_token:", accessToken) // access_token: qwer123456
+	// 获取原始请求体数据,返回一个[]byte切片和一个err对象,
+	// 使用GetRawData()Gin框架将不会自动解析请求体或将其绑定到结构体
+	rawData, err := c.GetRawData()
+	if err != nil {
+		// 处理获取原始数据错误
+		c.String(500, "Error: Failed to get raw data")
+		return
+	}
+	// 将原始数据转换为字符串进行展示
+	body := string(rawData)
+	fmt.Println("Raw Data:", body) // Raw Data: { "name":"zchengfeng", "age":18 }
+})
+```
+
+IDEA HTTP Client 测试脚本:
+
+```shell
+POST localhost:8080/requestParams
+Content-Type: application/json
+access_token: qwer123456
+
+{ "name":"zchengfeng", "age":18 }
+```
 
 ## 3.静态文件和模板渲染
 
