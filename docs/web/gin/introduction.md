@@ -292,12 +292,441 @@ access_token: qwer123456
 
 ## 4.中间件
 
+在 Gin 框架中,中间件本质上是一个返回 gin.HandlerFunc 的函数,用于在请求处理过程中添加额外的逻辑或处理操作。Gin 中间件分为如下几种:
+
+- 全局中间件(Global Middleware):全局中间件在所有路由请求之前都会执行，通常用于处理跨域请求、身份验证等通用逻辑。可以使用 gin.Default()或 gin.New()创建 Gin 引擎时默认注册的全局中间件。
+- 路由中间件(Route Middleware):路由中间件仅适用于特定的路由或路由组，并在其范围内执行。可以使用 gin.RouterGroup 的 Use()方法将中间件注册到路由组中。
+- 错误处理中间件(Error Handling Middleware):错误处理中间件用于捕获和处理路由处理函数中的错误。可以通过在路由处理函数中调用 c.Error(err)将错误传递给错误处理中间件。
+- 自定义中间件(Custom Middleware):自定义中间件是根据特定需求编写的自定义逻辑，例如日志记录、性能监测、请求计数等。可以根据自己的需求编写并注册这些中间件。
+
+此外，Gin 还提供了一些内置的中间件函数，例如 gin.Logger()用于记录请求日志，gin.Recovery()用于恢复从路由处理函数中发生的 panic。
+
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/gin-gonic/gin"
+)
+
+// LoggerMiddleware 自定义日志中间件,自定义中间需要返回一个gin.HandlerFunc
+func LoggerMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		fmt.Println("在处理请求之前...")
+		// 调用下一个handler(处理程序)
+		c.Next()
+		fmt.Println("在处理请求之后...")
+	}
+}
+
+func main() {
+	r := gin.Default()
+
+	// 全局注册中间件,该中间件将作用于所有请求
+	r.Use(LoggerMiddleware())
+
+	// 路由注册中间件,该中间件仅作用于对应路由组或路由
+	r.GET("/hello", func(c *gin.Context) {
+		fmt.Println("hello")
+	}).Use(LoggerMiddleware())
+
+	r.Run(":8080")
+}
+```
+
+### 4.1 自定义认证中间件
+
+### 4.2 自定义限流中间件
+
 ## 5.错误处理
+
+在 Gin 框架中,通常使用中间件和错误处理函数来处理和返回错误。Gin 提供如下函数用于错误处理:
+
+- c.Error(err error):将错误对象添加到当前请求的错误列表中。这通常在处理函数中用于抛出自定义错误。
+- c.AbortWithError(code int, err error) \*gin.Error:中止请求处理并返回一个带有指定状态码和错误信息的错误对象。
+- c.Errors:一个包含当前请求的错误列表的切片。可以使用 c.Errors.Last()获取最后一个错误。
+
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/gin-gonic/gin"
+	"net/http"
+)
+
+// CustomError 自定义错误结构体
+type CustomError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+// 实现Gin的error接口方法
+func (ce *CustomError) Error() string {
+	return fmt.Sprintf("Custom Error: %s", ce.Message)
+}
+
+// ErrorHandler 错误处理中间件
+func ErrorHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 放行请求,执行下一个handler
+		c.Next()
+		// 检查是否有错误发生
+		if len(c.Errors) > 0 {
+			// 获取最后一个错误
+			lastError := c.Errors.Last()
+			// 根据错误类型进行处理
+			switch err := lastError.Err.(type) {
+			case *CustomError:
+				// 自定义错误类型的处理
+				c.JSON(err.Code, gin.H{"error": err.Message, "code": err.Code})
+				break
+			default:
+				// 其他错误类型的处理
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
+			}
+			// 终止请求
+			c.Abort()
+		}
+	}
+}
+
+func main() {
+	r := gin.Default()
+	// 注册错误处理中间件,错误处理中间件应放置在所有路由注册之前,以确保它在处理路由之前起作用
+	r.Use(ErrorHandler())
+
+	// 访问http://localhost:8080/example 输出 { "code": 400, "error": "Bad Request" }
+	r.GET("/example", func(c *gin.Context) {
+		// 模拟出现错误
+		err := &CustomError{
+			Code:    http.StatusBadRequest,
+			Message: "Bad Request",
+		}
+		// 手动抛出自定义错误
+		c.Error(err)
+	})
+	r.Run(":8080")
+}
+```
 
 ## 6.参数校验
 
-## 7.Cookie & Session
+## 7.操作 Cookie & Session
+
+### 7.1 Gin 操作 Cookie
+
+在 Gin 框架中,gin.Context 对象提供 Cookie 和 setCookie 函数用于操作 Cookie:
+
+- `Cookie(name string)`:根据 Cookie 的名称获取对应的 Cookie 值。
+- `SetCookie(name, value string, maxAge int, path, domain string, secure, httpOnly bool)`:用于设置 Cookie,函数说明如下:
+  - name(必填):Cookie 的名称。
+  - value(必填):Cookie 的值。
+  - maxAge:Cookie 的最大有效时间,以秒为单位,-1 表示被删除。优先级高于 Expires。
+  - path:Cookie 可用的路径。默认值是"/"，表示可用于整个域名。
+  - domain:Cookie 的域名。默认值是当前请求的域名。
+  - secure:指定是否仅通过 HTTPS 传输 Cookie。默认值是 false，表示可以通过 HTTP 和 HTTPS 传输。
+  - httpOnly:指定是否仅通过 HTTP 传输 Cookie，而不能通过 JavaScript 等脚本访问。默认值是 false。
+
+```go
+package main
+
+import (
+	"github.com/gin-gonic/gin"
+	"net/http"
+)
+
+func main() {
+	r := gin.Default()
+
+	r.GET("setCookie", func(c *gin.Context) {
+		// 设置Cookie
+		c.SetCookie("username", "zchengfeng", 3600, "/", "localhost", false, true)
+		c.String(http.StatusOK, "Cookie set")
+	})
+
+	r.GET("getCookie", func(c *gin.Context) {
+		username, err := c.Cookie("username")
+		if err != nil {
+			c.String(http.StatusNotFound, "Cookie not found")
+			return
+		}
+		c.String(http.StatusOK, "username: "+username)
+	})
+
+	r.GET("delCookie", func(c *gin.Context) {
+		// 删除Cookie,使用SetCookie模拟删除Cookie,其value为空,maxAge为-1
+		c.SetCookie("username", "", -1, "/", "localhost", false, true)
+		c.String(http.StatusOK, "Cookie deleted")
+	})
+	r.Run(":8080")
+}
+```
+
+### 7.2 Gin 操作 Session
+
+Gin 本身不提供原生的 Session 功能,但可以使用第三方包(如 github.com/gin-contrib/sessions)来实现 Session 功能。
+
+```shell
+go get github.com/gin-contrib/sessions
+```
+
+```go
+package main
+
+import (
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
+	"github.com/gin-gonic/gin"
+)
+
+func main() {
+	r := gin.Default()
+	/**
+	 * 使用cookie存储引擎来创建一个新的 Session 存储对象,该方法介绍一个字节数组,
+	 * 字节数组被用作密钥来加密和验证存储在 cookie 中的 Session 数据
+	 */
+	store := cookie.NewStore([]byte("secret"))
+	/*
+	 * 注册Session插件,用于于处理 Session 相关的操作,Sessions函数接受name和store两个参数:
+	 * - name:Session的名称,用于标识应用程序中的Session数据,通常是唯一的。
+	 * - store:存储器。存储器是一个实现了 sessions.Store 接口的对象,用于实际的 Session 存储操作
+	 */
+	r.Use(sessions.Sessions("sessionName", store))
+
+	r.GET("setSession", func(c *gin.Context) {
+		// 获取当前请求关联的 Session 对象
+		session := sessions.Default(c)
+		// 设置Session
+		session.Set("username", "zchengfeng")
+		// 手动保存Session,在Gin中,Session 数据默认是在请求处理函数结束时自动保存
+		session.Save()
+	})
+
+	r.GET("/getSession", func(c *gin.Context) {
+		// 获取当前请求关联的 Session 对象
+		session := sessions.Default(c)
+		// 获取根据Session名称获取对应值,返回一个 interface{}
+		username := session.Get("username")
+		if username != nil {
+			c.JSON(200, gin.H{"username": username})
+		} else {
+			c.JSON(200, gin.H{"message": "Session key not found"})
+		}
+	})
+
+	r.GET("/delSession", func(c *gin.Context) {
+		// 获取当前请求关联的 Session 对象
+		session := sessions.Default(c)
+		// 删除Session
+		session.Delete("username")
+	})
+
+	r.GET("/clearSession", func(c *gin.Context) {
+		// 获取当前请求关联的 Session 对象
+		session := sessions.Default(c)
+		// 清除session对象中所有数据
+		session.Clear()
+	})
+
+	r.Run(":8080")
+}
+```
 
 ## 8.上传文件
 
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/gin-gonic/gin"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"os"
+	"path/filepath"
+)
+
+func main() {
+	r := gin.Default()
+	// 设置文件上传的大小限制为 8MB
+	r.MaxMultipartMemory = 8 << 20 // 8MB
+
+	// 上传单个文件
+	r.POST("/uploadFile", func(c *gin.Context) {
+		// 获取表单中的文件
+		file, err := c.FormFile("file")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		fmt.Println("文件名:", file.Filename)
+		fmt.Println("文件大小(byte):", file.Size)
+		fmt.Println("文件头:", file.Header)
+		fmt.Println("文件类型:", file.Header.Get("Content-Type"))
+
+		// 将文件保存到指定路径
+		dst := "uploads/" + file.Filename
+		// SaveUploadedFile()用于将上传的文件保存到指定的目标路径
+		if err := c.SaveUploadedFile(file, dst); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "File uploaded successfully"})
+	})
+
+	// 多文件上传
+	r.POST("/uploadMultipleFiles", func(c *gin.Context) {
+		// 获取表单中的多个文件
+		form, err := c.MultipartForm()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		// 遍历上传的文件
+		files := form.File["files"]
+		for _, file := range files {
+			// 将每个文件保存到指定路径
+			dst := "uploads/" + file.Filename
+			if err := c.SaveUploadedFile(file, dst); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "Files uploaded successfully"})
+	})
+
+	// 多文件并发上传
+	r.POST("/concurrentUpload", func(c *gin.Context) {
+		// 获取表单中的多个文件
+		form, err := c.MultipartForm()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		// 获取文件列表
+		files := form.File["files"]
+		// 创建一个channel来接收每个上传文件的结果
+		results := make(chan string, len(files))
+		// 启动协程处理每个上传文件
+		for _, file := range files {
+			go ProcessUpload(file, results)
+		}
+		// 等待所有协程完成
+		for range files {
+			fmt.Println(<-results)
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "Files uploaded successfully"})
+	})
+
+	r.Run(":8080")
+}
+
+// ProcessUpload 处理文件上传
+func ProcessUpload(file *multipart.FileHeader, results chan<- string) {
+	// 打开文件
+	src, err := file.Open()
+	if err != nil {
+		results <- fmt.Sprintf("Failed to open file %s: %s", file.Filename, err.Error())
+		return
+	}
+	// 函数执行完毕时关闭文件
+	defer src.Close()
+
+	// 创建目录
+	if err := os.MkdirAll("uploads", 0755); err != nil {
+		fmt.Sprintf("Failed to create dir:%s", err.Error())
+		return
+	}
+
+	// 构建目标文件路径
+	dst := filepath.Join("uploads", file.Filename)
+	fmt.Println("dst:", dst)
+	// 创建目标文件
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		results <- fmt.Sprintf("Failed to create file %s: %s", file.Filename, err.Error())
+		return
+	}
+	defer dstFile.Close()
+	// 将源文件内容拷贝到目标文件
+	_, err = io.Copy(dstFile, src)
+	if err != nil {
+		results <- fmt.Sprintf("Failed to copy file %s: %s", file.Filename, err.Error())
+		return
+	}
+	results <- fmt.Sprintf("File %s uploaded successfully", file.Filename)
+}
+```
+
 ## 9.Gin 整合 Swag
+
+## 10.Gin 集成 WebSocket
+
+## 11.Gin 集成 SSE
+
+SSE （Server-Sent Events）是一种基于 HTTP 的单向通信机制，用于实现服务器向客户端推送数据的能力,相比较 WebSocket 更加轻量级,由于小程序、APP 环境并不支持 SSE,因此 SSE 适用于 PC 端的消息推送等场景。为了确保 SSE 正确工作，需要设置特定的响应头信息:
+
+- Content-Type:text/event-stream:text/event-stream 表示服务器返回的是 SSE 格式的数据流。客户端接收到这个头信息后，知道这是一个 SSE 连接，并能正确地处理和解析响应数据。
+- `Cache-Control:no-cache`:no-cache 表示禁用 HTTP 缓存。SSE 是实时推送数据的机制，不适合进行缓存，因此需要禁用缓存。
+- `Connection:keep-alive`:表示服务器和客户端之间的连接保持活跃状态。SSE 是长连接机制，需要保持连接以便服务器能够持续地向客户端推送数据。
+- `Access-Control-Allow-Origin:*`:这个头信息表示允许所有来源的客户端访问 SSE 服务，即允许跨域请求。在开发阶段或无需限制访问来源时，可以设置为 `"*"`,表示允许任何来源的客户端访问。
+
+```go
+package main
+
+import (
+	"fmt"
+	"github.com/gin-gonic/gin"
+	"time"
+)
+
+func main() {
+	r := gin.Default()
+	r.GET("/sse", func(c *gin.Context) {
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("Access-Control-Allow-Origin", "*")
+
+		// 创建一个定时器,每隔 1 秒触发一次
+		ticker := time.NewTicker(1 * time.Second)
+		// 请求结束时关闭定时器
+		defer ticker.Stop()
+
+		for {
+			select {
+			// 使用通道选择语句来监听客户端连接关闭的事件
+			case <-c.Writer.CloseNotify():
+				// 客户端连接关闭时退出循环
+				return
+			// 等待定时器触发
+			case <-ticker.C:
+				// 每秒向客户端发送一个消息
+				data := fmt.Sprintf("Message sent at: %s", time.Now().Format("2006-01-02 15:04:05"))
+				message := fmt.Sprintf("data: %s\n\n", data)
+				// 将字符串写入响应流的方法
+				c.Writer.WriteString(message)
+				// 将响应缓冲区中的数据刷新并立即发送给客户端的方法
+				c.Writer.Flush()
+			}
+		}
+	})
+	r.Run(":8080")
+}
+```
+
+## 11.HTTP2 server 推送
+
+## Gin 项目的优化策略
+
+### 使用 Jsoniter 作为 JSON 包
+
+Gin 使用 encoding/json 作为默认的 json 包,Jsoniter 是一个针对高性能 JSON 编解码的库，相比于 Gin 默认使用的 Go 标准库中的 encoding/json 包，Jsoniter 具有以下优势：
+
+- 更快的解码和编码速度：Jsoniter 通过优化的算法和数据结构，以及直接使用底层的字节操作，实现了更快的 JSON 解码和编码速度。它在解析和生成大型复杂 JSON 数据时，通常比标准库更快。
+- 更低的内存消耗：Jsoniter 在解码 JSON 数据时，避免了额外的内存分配和拷贝操作，从而减少了内存消耗。这对于大型 JSON 数据或高并发场景下的内存优化非常有帮助。
+- 更好的兼容性：Jsoniter 提供了与标准库 encoding/json 类似的 API，可以无缝替换标准库的使用，而不需要对现有代码进行太多改动。它与标准库的兼容性使得迁移和使用变得更加容易。
+- 支持更多的特性：Jsoniter 在功能上也提供了一些标准库没有的附加特性，例如对注解的支持、自定义编码器和解码器、更好的错误处理等。这些特性可以提供更大的灵活性和更好的开发体验。
